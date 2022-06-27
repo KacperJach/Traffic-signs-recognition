@@ -1,0 +1,90 @@
+import numpy as np
+import pandas as pd
+from PIL import Image
+import os
+from sklearn.model_selection import train_test_split
+from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.models import Sequential, load_model
+from tensorflow.keras.layers import Conv2D, MaxPool2D, Dense, Flatten, Dropout #to create CNN
+
+data = []
+labels = []
+classes = 43
+cur_path = os.getcwd()
+
+
+for i in range(classes):
+    path = os.path.join(cur_path,'archive','Train',str(i))
+    images = os.listdir(path)
+    for a in images:
+        try:
+            tmp_path = os.path.join(path, a)
+            image = Image.open(tmp_path)
+            image = image.resize((30,30))
+            image = np.array(image)
+
+            data.append(image)
+            labels.append(i)
+        except:
+            print("Error loading image")
+
+#Converting lists into numpy arrays
+data = np.array(data)
+labels = np.array(labels)
+print(data.shape, labels.shape)
+
+#Splitting training and testing dataset
+X_t1, X_t2, y_t1, y_t2 = train_test_split(data, labels, test_size=0.2, random_state=42)
+print(X_t1.shape, X_t2.shape, y_t1.shape, y_t2.shape)
+
+#Converting the labels into one hot encoding
+y_t1 = to_categorical(y_t1, 43)
+y_t2 = to_categorical(y_t2, 43)
+
+#Building the model
+model = Sequential()
+model.add(Conv2D(filters=32, kernel_size=(4,4), activation='relu', input_shape=X_t1.shape[1:]))
+model.add(Conv2D(filters=32, kernel_size=(4,4), activation='relu'))
+model.add(MaxPool2D(pool_size=(2, 2)))
+model.add(Dropout(rate=0.1))
+model.add(Conv2D(filters=64, kernel_size=(2, 2), activation='relu'))
+model.add(Conv2D(filters=64, kernel_size=(2, 2), activation='relu'))
+model.add(MaxPool2D(pool_size=(2, 2)))
+model.add(Dropout(rate=0.1))
+model.add(Flatten())
+model.add(Dense(256, activation='relu'))
+model.add(Dropout(rate=0.5))
+model.add(Dense(43, activation='softmax'))
+
+model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+eps = 15
+anc = model.fit(X_t1, y_t1, batch_size=32, epochs=eps, validation_data=(X_t2, y_t2))
+model.save("my_model.h5")
+
+
+
+#testing accuracy on test dataset
+from tensorflow.keras.models import load_model
+model = load_model('my_model.h5')
+test_path = os.path.join(cur_path,'archive','Test.csv')
+y_test = pd.read_csv(test_path)
+labels = y_test["ClassId"].values
+imgs = y_test["Path"].values     #Test/00000
+data=[]
+to_remove = "Test/"
+for img in imgs:
+    #Pre-processing test images paths
+    for r in to_remove:
+        img = img.replace(r,"")
+    img_path = os.path.join(cur_path,'archive','Test',img)
+    image = Image.open(img_path)
+    image = image.resize((30,30))
+    data.append(np.array(image))
+X_test=np.array(data)
+predict_x=model.predict(X_test)
+pred = np.argmax(predict_x,axis=1)
+
+#Accuracy with the test data
+from sklearn.metrics import accuracy_score
+print(accuracy_score(labels, pred))
+model.save('traffic_classifier.h5')
